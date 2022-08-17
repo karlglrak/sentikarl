@@ -2,6 +2,8 @@
 
 Sentinel is an application written in Python that may be used to perform sentiment analysis on a piece of text. It leverages an external API for this purpose and provides a safe default when the API is unavailable.
 
+A live version of the application can be found here: [Sentikarl](https://sentikarl.herokuapp.com).
+
 ## Commands
 
 The following commands describe how the application may be built, run and tested. Note that [Python 3.10](https://docs.python.org/3/whatsnew/3.10.html) and [Poetry](https://python-poetry.org/) are required.
@@ -44,3 +46,7 @@ BASE_URL=http://localhost:8000 poetry run pytest tests/test_regression.py
 ```sh
 poetry run pytest tests/test_integration.py
 ```
+
+## Contributing
+
+A guide on contributing to this project can be found in [CONTRIBUTING.md](./CONTRIBUTING.md)
