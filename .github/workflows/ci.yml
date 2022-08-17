@@ -1,0 +1,127 @@
+name: Poetry CI
+
+on:
+  push:
+    branches:
+      - $default-branch
+      - 'feature/**'
+  pull_request:
+    branches:
+      - $default-branch
+
+# TODO: Align with https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions ?
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  build-and-unit-test:
+    name: Build and Run Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # arbitrary choice!
+    strategy:
+      matrix:
+        python-versions:
+          - '3.10.2'
+        poetry-versions:
+          - '1.1.14'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Python
+        id: setup-python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-versions }}
+
+      - name: Cache pip dependencies
+        id: pip-cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ steps.setup-python.outputs.python-version }}-pip-${{ hashFiles('**/pyproject.toml') }}
+
+      - name: Install python dependencies
+        id: install-python-deps
+        run: pip install .
+          
+      - name: Install Poetry
+        id: install-poetry
+        uses: snok/install-poetry@v1 
+        with:
+          version: ${{ matrix.poetry-versions }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      # Load venv cache if it exists
+      - name: Load cached venv
+        id: poetry-cache
+        uses: actions/cache@v2
+        with:
+          path: .venv
+          key: ${{ steps.setup-python.outputs.python-version }}-${{ matrix.poetry-versions }}-poetry-${{ hashFiles('**/pyproject.toml') }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        id: install-deps
+        if: steps.poetry-cache.outputs.cache-hit != 'true'
+        run: poetry install
+
+      - name: Determine application version
+        id: app-version
+        run: |
+          appversion=$(poetry version -s)
+          echo "::set-output name=appversion::$appversion"
+
+        # TODO parameterise fail-under threshold (if templating)
+      - name: Run unit tests
+        id: unit-tests
+        run: |
+          mkdir reports
+          poetry run coverage run -m pytest tests/test_unit.py
+          poetry run coverage report --fail-under 90 > reports/coverage.txt
+
+      - name: Archive coverage report
+        id: archive-report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: reports/coverage.txt
+
+      - name: Regression test
+        id: regression-test
+        run: |
+          uvicorn sentinel.api:app --host 0.0.0.0 --port 8000 & # run app in background
+          BASE_URL=http://localhost:8000 poetry run pytest tests/test_regression.py
+
+      - name: Integration test
+        id: integration-test
+        run: poetry run pytest tests/test_integration.py
+
+# Can run this then archive from dist/*.[whl,tar.gz], but why? what is our purpose here?       
+#      - name: Poetry build
+#        id: poetry-build
+#        run: poetry build
+
+  deploy:
+    name: Deploy to Heroku
+    needs: build-and-unit-test
+    runs-on: ubuntu-latest
+    # if: github.ref == 'refs/heads/master'
+    environment: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - run: git fetch --prune --unshallow
+
+      - name: Push to Heroku
+        env:
+          HEROKU_API_KEY: ${{secrets.HEROKU_API_KEY}}
+        run: |
+          git remote add heroku https://heroku:${HEROKU_API_KEY}@git.heroku.com/sentikarl.git
+          git push heroku ${{ github.ref }}
