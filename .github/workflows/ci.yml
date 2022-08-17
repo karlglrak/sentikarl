@@ -3,11 +3,11 @@ name: Poetry CI
 on:
   push:
     branches:
-      - $default-branch
+      - 'master'
       - 'feature/**'
   pull_request:
     branches:
-      - $default-branch
+      - 'master'
 
 # TODO: Align with https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-third-party-actions ?
 
@@ -112,7 +112,7 @@ jobs:
     name: Deploy to Heroku
     needs: build-and-unit-test
     runs-on: ubuntu-latest
-    # if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master'
     environment: test
     steps:
       - name: Checkout
